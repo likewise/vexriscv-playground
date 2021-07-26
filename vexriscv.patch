@@ -1,0 +1,202 @@
+diff --git a/src/main/c/murax/hello_world/makefile b/src/main/c/murax/hello_world/makefile
+index dc560c0..493c493 100644
+--- a/src/main/c/murax/hello_world/makefile
++++ b/src/main/c/murax/hello_world/makefile
+@@ -16,6 +16,7 @@ LDSCRIPT = ./src/linker.ld
+ 
+ #include ../../../resources/gcc.mk
+ # Set it to yes if you are using the sifive precompiled GCC pack
++SIFIVE_GCC_PACK := no
+ SIFIVE_GCC_PACK ?= yes
+ 
+ ifeq ($(SIFIVE_GCC_PACK),yes)
+@@ -24,9 +25,9 @@ ifeq ($(SIFIVE_GCC_PACK),yes)
+ else
+ 	RISCV_NAME ?= riscv32-unknown-elf
+ 	ifeq ($(MULDIV),yes)
+-		RISCV_PATH ?= /opt/riscv32im/
++		RISCV_PATH ?= /opt/rv32im/
+ 	else
+-		RISCV_PATH ?= /opt/riscv32i/
++		RISCV_PATH ?= /opt/rv32i/
+ 	endif
+ endif
+ 
+diff --git a/src/main/c/murax/hello_world/src/main.c b/src/main/c/murax/hello_world/src/main.c
+index 05f3227..ca32143 100644
+--- a/src/main/c/murax/hello_world/src/main.c
++++ b/src/main/c/murax/hello_world/src/main.c
+@@ -24,7 +24,7 @@ void main() {
+     GPIO_A->OUTPUT_ENABLE = 0x0000000F;
+ 	GPIO_A->OUTPUT = 0x00000001;
+     println("hello world arty a7 v1");
+-    const int nleds = 4;
++    const int nleds = 8;
+ 	const int nloops = 2000000;
+     while(1){
+     	for(unsigned int i=0;i<nleds-1;i++){
+@@ -35,8 +35,10 @@ void main() {
+ 			GPIO_A->OUTPUT = (1<<(nleds-1))>>i;
+ 			delay(nloops);
+ 		}
++	__asm__ volatile ("wfi");
+     }
+ }
+ 
+ void irqCallback(){
++   GPIO_A->OUTPUT = ~GPIO_A->OUTPUT;
+ }
+diff --git a/src/main/scala/vexriscv/demo/Murax.scala b/src/main/scala/vexriscv/demo/Murax.scala
+index 05c8e00..07ac3f7 100644
+--- a/src/main/scala/vexriscv/demo/Murax.scala
++++ b/src/main/scala/vexriscv/demo/Murax.scala
+@@ -67,7 +67,7 @@ object MuraxConfig{
+       rspFifoDepth = 32,
+       xip = SpiXdrMasterCtrl.XipBusParameters(addressWidth = 24, lengthWidth = 2)
+     )),
+-    hardwareBreakpointCount = if(withXip) 3 else 0,
++    hardwareBreakpointCount = if(withXip) 3 else 3,
+     cpuPlugins = ArrayBuffer( //DebugPlugin added by the toplevel
+       new IBusSimplePlugin(
+         resetVector = if(withXip) 0xF001E000l else 0x80000000l,
+@@ -84,7 +84,7 @@ object MuraxConfig{
+         earlyInjection = false,
+         bigEndian = bigEndian
+       ),
+-      new CsrPlugin(CsrPluginConfig.smallest(mtvecInit = if(withXip) 0xE0040020l else 0x80000020l)),
++      new CsrPlugin(CsrPluginConfig.smallest(mtvecInit = if(withXip) 0xE0040020l else 0x80000020l).copy(wfiGenAsWait = true)),
+       new DecoderSimplePlugin(
+         catchIllegalInstruction = false
+       ),
+diff --git a/src/main/scala/vexriscv/demo/VexRiscvAxi4WithIntegratedJtag.scala b/src/main/scala/vexriscv/demo/VexRiscvAxi4WithIntegratedJtag.scala
+index 67556e9..ce3d9be 100644
+--- a/src/main/scala/vexriscv/demo/VexRiscvAxi4WithIntegratedJtag.scala
++++ b/src/main/scala/vexriscv/demo/VexRiscvAxi4WithIntegratedJtag.scala
+@@ -98,7 +98,7 @@ object VexRiscvAxi4WithIntegratedJtag{
+             pessimisticWriteRegFile = false,
+             pessimisticAddressMatch = false
+           ),
+-          new DebugPlugin(ClockDomain.current.clone(reset = Bool().setName("debugReset"))),
++          new DebugPlugin(ClockDomain.current.clone(reset = Bool().setName("debugReset")), 2),
+           new BranchPlugin(
+             earlyBranch = false,
+             catchAddressMisaligned = true
+@@ -121,7 +121,7 @@ object VexRiscvAxi4WithIntegratedJtag{
+               mcycleAccess   = CsrAccess.NONE,
+               minstretAccess = CsrAccess.NONE,
+               ecallGen       = false,
+-              wfiGenAsWait         = false,
++              wfiGenAsWait   = true,
+               ucycleAccess   = CsrAccess.NONE,
+               uinstretAccess = CsrAccess.NONE
+             )
+@@ -133,7 +133,7 @@ object VexRiscvAxi4WithIntegratedJtag{
+       //CPU instanciation
+       val cpu = new VexRiscv(cpuConfig)
+ 
+-      //CPU modifications to be an Avalon one
++      //CPU modifications to be an AXI4 one
+       cpu.setDefinitionName("VexRiscvAxi4")
+       cpu.rework {
+         var iBus : Axi4ReadOnly = null
+diff --git a/src/main/c/murax/hello_world/makefile b/src/main/c/murax/hello_world/makefile
+index dc560c0..493c493 100644
+--- a/src/main/c/murax/hello_world/makefile
++++ b/src/main/c/murax/hello_world/makefile
+@@ -16,6 +16,7 @@ LDSCRIPT = ./src/linker.ld
+ 
+ #include ../../../resources/gcc.mk
+ # Set it to yes if you are using the sifive precompiled GCC pack
++SIFIVE_GCC_PACK := no
+ SIFIVE_GCC_PACK ?= yes
+ 
+ ifeq ($(SIFIVE_GCC_PACK),yes)
+@@ -24,9 +25,9 @@ ifeq ($(SIFIVE_GCC_PACK),yes)
+ else
+ 	RISCV_NAME ?= riscv32-unknown-elf
+ 	ifeq ($(MULDIV),yes)
+-		RISCV_PATH ?= /opt/riscv32im/
++		RISCV_PATH ?= /opt/rv32im/
+ 	else
+-		RISCV_PATH ?= /opt/riscv32i/
++		RISCV_PATH ?= /opt/rv32i/
+ 	endif
+ endif
+ 
+diff --git a/src/main/c/murax/hello_world/src/main.c b/src/main/c/murax/hello_world/src/main.c
+index 05f3227..ca32143 100644
+--- a/src/main/c/murax/hello_world/src/main.c
++++ b/src/main/c/murax/hello_world/src/main.c
+@@ -24,7 +24,7 @@ void main() {
+     GPIO_A->OUTPUT_ENABLE = 0x0000000F;
+ 	GPIO_A->OUTPUT = 0x00000001;
+     println("hello world arty a7 v1");
+-    const int nleds = 4;
++    const int nleds = 8;
+ 	const int nloops = 2000000;
+     while(1){
+     	for(unsigned int i=0;i<nleds-1;i++){
+@@ -35,8 +35,10 @@ void main() {
+ 			GPIO_A->OUTPUT = (1<<(nleds-1))>>i;
+ 			delay(nloops);
+ 		}
++	__asm__ volatile ("wfi");
+     }
+ }
+ 
+ void irqCallback(){
++   GPIO_A->OUTPUT = ~GPIO_A->OUTPUT;
+ }
+diff --git a/src/main/scala/vexriscv/demo/Murax.scala b/src/main/scala/vexriscv/demo/Murax.scala
+index 05c8e00..07ac3f7 100644
+--- a/src/main/scala/vexriscv/demo/Murax.scala
++++ b/src/main/scala/vexriscv/demo/Murax.scala
+@@ -67,7 +67,7 @@ object MuraxConfig{
+       rspFifoDepth = 32,
+       xip = SpiXdrMasterCtrl.XipBusParameters(addressWidth = 24, lengthWidth = 2)
+     )),
+-    hardwareBreakpointCount = if(withXip) 3 else 0,
++    hardwareBreakpointCount = if(withXip) 3 else 3,
+     cpuPlugins = ArrayBuffer( //DebugPlugin added by the toplevel
+       new IBusSimplePlugin(
+         resetVector = if(withXip) 0xF001E000l else 0x80000000l,
+@@ -84,7 +84,7 @@ object MuraxConfig{
+         earlyInjection = false,
+         bigEndian = bigEndian
+       ),
+-      new CsrPlugin(CsrPluginConfig.smallest(mtvecInit = if(withXip) 0xE0040020l else 0x80000020l)),
++      new CsrPlugin(CsrPluginConfig.smallest(mtvecInit = if(withXip) 0xE0040020l else 0x80000020l).copy(wfiGenAsWait = true)),
+       new DecoderSimplePlugin(
+         catchIllegalInstruction = false
+       ),
+diff --git a/src/main/scala/vexriscv/demo/VexRiscvAxi4WithIntegratedJtag.scala b/src/main/scala/vexriscv/demo/VexRiscvAxi4WithIntegratedJtag.scala
+index 67556e9..ce3d9be 100644
+--- a/src/main/scala/vexriscv/demo/VexRiscvAxi4WithIntegratedJtag.scala
++++ b/src/main/scala/vexriscv/demo/VexRiscvAxi4WithIntegratedJtag.scala
+@@ -98,7 +98,7 @@ object VexRiscvAxi4WithIntegratedJtag{
+             pessimisticWriteRegFile = false,
+             pessimisticAddressMatch = false
+           ),
+-          new DebugPlugin(ClockDomain.current.clone(reset = Bool().setName("debugReset"))),
++          new DebugPlugin(ClockDomain.current.clone(reset = Bool().setName("debugReset")), 2),
+           new BranchPlugin(
+             earlyBranch = false,
+             catchAddressMisaligned = true
+@@ -121,7 +121,7 @@ object VexRiscvAxi4WithIntegratedJtag{
+               mcycleAccess   = CsrAccess.NONE,
+               minstretAccess = CsrAccess.NONE,
+               ecallGen       = false,
+-              wfiGenAsWait         = false,
++              wfiGenAsWait   = true,
+               ucycleAccess   = CsrAccess.NONE,
+               uinstretAccess = CsrAccess.NONE
+             )
+@@ -133,7 +133,7 @@ object VexRiscvAxi4WithIntegratedJtag{
+       //CPU instanciation
+       val cpu = new VexRiscv(cpuConfig)
+ 
+-      //CPU modifications to be an Avalon one
++      //CPU modifications to be an AXI4 one
+       cpu.setDefinitionName("VexRiscvAxi4")
+       cpu.rework {
+         var iBus : Axi4ReadOnly = null

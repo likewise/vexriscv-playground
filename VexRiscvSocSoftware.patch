@@ -1,0 +1,108 @@
+diff --git a/projects/murax/demo/src/crt.S b/projects/murax/demo/src/crt.S
+index 0a98a6e..b91a31c 100755
+--- a/projects/murax/demo/src/crt.S
++++ b/projects/murax/demo/src/crt.S
+@@ -60,6 +60,8 @@ crtInit:
+   .option pop
+   la sp, _stack_start
+ 
++  //wfi
++
+ bss_init:
+   la a0, _bss_start
+   la a1, _bss_end
+diff --git a/projects/murax/demo/src/main.c b/projects/murax/demo/src/main.c
+index 23abc10..1451601 100755
+--- a/projects/murax/demo/src/main.c
++++ b/projects/murax/demo/src/main.c
+@@ -2,8 +2,17 @@
+ 
+ #include <murax.h>
+ 
+-
+ void main() {
++	uint32_t counter = 0;
++	while (1)
++	{
++		*(uint32_t *)0x80000000 = counter;
++		asm volatile("wfi");
++		counter += 1;
++	}
++}
++
++void main2() {
+ 	volatile uint32_t a = 1, b = 2, c = 3;
+ 	uint32_t result = 0;
+ 
+@@ -11,9 +20,9 @@ void main() {
+ 	prescaler_init(TIMER_PRESCALER);
+ 	timer_init(TIMER_A);
+ 
+-	TIMER_PRESCALER->LIMIT = 12000-1; //1 ms rate
++	TIMER_PRESCALER->LIMIT = 40000-1; //1 ms rate
+ 
+-	TIMER_A->LIMIT = 1000-1;  //1 second rate
++	TIMER_A->LIMIT = 10000-1;  //1 second rate
+ 	TIMER_A->CLEARS_TICKS = 0x00010002;
+ 
+ 	TIMER_INTERRUPT->PENDINGS = 0xF;
+@@ -22,18 +31,21 @@ void main() {
+ 	GPIO_A->OUTPUT_ENABLE = 0x000000FF;
+ 	GPIO_A->OUTPUT = 0x00000000;
+ 
+-	UART->STATUS = 2; //Enable RX interrupts
++	//UART->STATUS = 2; //Enable RX interrupts
+ 	UART->DATA = 'A';
+ 
+ 	while(1){
+ 		result += a;
+ 		result += b + c;
+-		for(uint32_t idx = 0;idx < 50000;idx++) asm volatile("");
+-		GPIO_A->OUTPUT = (GPIO_A->OUTPUT & ~0x3F) | ((GPIO_A->OUTPUT + 1) & 0x3F);  //Counter on LED[5:0]
++		//for(uint32_t idx = 0;idx < 500000;idx++) asm volatile("");
++		//asm volatile("wfi");
++		*(uint32_t *)0xA0000000 = result;
++		GPIO_A->OUTPUT = (GPIO_A->OUTPUT & ~0x3F) | ((GPIO_A->OUTPUT + 1) & 0x3F); //Counter on LED[5:0]
+ 	}
+ }
+ 
+ void irqCallback(){
++#if 0	
+ 	if(TIMER_INTERRUPT->PENDINGS & 1){  //Timer A interrupt
+ 		GPIO_A->OUTPUT ^= 0x80; //Toogle led 7
+ 		TIMER_INTERRUPT->PENDINGS = 1;
+@@ -41,6 +53,7 @@ void irqCallback(){
+ 	while(UART->STATUS & (1 << 9)){ //UART RX interrupt
+ 		UART->DATA = (UART->DATA) & 0xFF;
+ 	}
++#endif
+ }
+ 
+ 
+diff --git a/projects/murax/libs/linker.ld b/projects/murax/libs/linker.ld
+index ad708d0..d624f2e 100755
+--- a/projects/murax/libs/linker.ld
++++ b/projects/murax/libs/linker.ld
+@@ -11,7 +11,7 @@ OUTPUT_ARCH(riscv)
+ ENTRY(crtStart)
+ 
+ MEMORY {
+-  onChipRam : ORIGIN = 0x80000000, LENGTH = 8k
++  onChipRam : ORIGIN = 0x80000000, LENGTH = 4k
+ }
+ 
+ _stack_size = DEFINED(_stack_size) ? _stack_size : 512;
+diff --git a/resources/gcc.mk b/resources/gcc.mk
+index 597f0ba..6edbece 100644
+--- a/resources/gcc.mk
++++ b/resources/gcc.mk
+@@ -3,7 +3,8 @@ SIFIVE_GCC_PACK ?= yes
+ 
+ ifeq ($(SIFIVE_GCC_PACK),yes)
+ 	RISCV_NAME ?= riscv64-unknown-elf
+-	RISCV_PATH ?= /opt/riscv/
++	RISCV_PATH ?= /opt/riscv64-unknown-elf-gcc-20171231-x86_64-linux-centos6
++#/opt/riscv/
+ else
+ 	RISCV_NAME ?= riscv32-unknown-elf
+ 	ifeq ($(MULDIV),yes)
